@@ -25,8 +25,8 @@ shape = 1000, 1000  # outraster resolution
 pnt_constrain_buffer = 1
 grid_cells = 100
 
-smoothing = 1  # gaussian sigma factor
-constraint_multiplier = 1   # think of it like contrast for degree of constraint
+smoothing = 15  # gaussian sigma factor
+constraint_multiplier = 300   # think of it like contrast for degree of constraint
 
 def compileConstraints():
     features_in_aoi = []
