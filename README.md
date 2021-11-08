@@ -14,4 +14,6 @@ Mess around with the variables: <br>
 + Raster Magnitude *The higher the number the greater intensity of contraint, think of this like contrast*
 + Smoothness *Applies a gaussian filter to smooth your heatmap, this is the sigma value*
 
+<br>
+
 ![various magnitudes and smoothnesses](https://raw.githubusercontent.com/SamRobertsArup/Heat-Mapper/main/InputSettingsResults.png)
