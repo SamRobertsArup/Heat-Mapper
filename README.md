@@ -3,11 +3,10 @@ Creates a heat map from the following *required* folder structure: <br>
 
 /data/AOI/ <br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*yourAreaOfInterest.shp* <br>
-/data/Constraints/ <br>
-&nbsp;&nbsp;&nbsp;/1/ <br>
+/data/Constraints/1/ <br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*contraintWithMagnitudeOfOne.shp* <br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*anotherContraintWithMagnitudeOfOne.shp* <br>
-&nbsp;&nbsp;&nbsp;/2/ <br>
+/data/Constraints/2/ <br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*contraintWithMagnitudeOfTwo.shp* <br>
 
 You can have as many constraint subfolders *so long as they all have an integer name* as you'd like with as many shapefiles in them as you'd like <br> <br>
