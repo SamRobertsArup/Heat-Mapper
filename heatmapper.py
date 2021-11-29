@@ -20,7 +20,7 @@ from scipy.ndimage import gaussian_filter
 
 path = r"C:\dev\Requests and Tasks\EAST LINDSEY heatmap\data"
 smoothing = 15  # gaussian sigma factor
-constraint_multiplier = 100   # think of it like contrast for degree of constraint
+constraint_multiplier = 300   # think of it like contrast for degree of constraint
 
 # print("Please review the documentation - https://github.com/SamRobertsArup/Heat-Mapper")
 # path = input("Please specify your data folder:")
