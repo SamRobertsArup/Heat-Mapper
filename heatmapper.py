@@ -18,17 +18,21 @@ from scipy.ndimage import gaussian_filter
 #  - Within each constraint subfolder place the shapefiles that constitute that constraint level, if there is
 #       only 1 place all under 1
 
-path = "C:\\dev\\hacker scripts\\heatmapper\\data\\"
+path = r"C:\dev\Requests and Tasks\EAST LINDSEY heatmap\data"
+smoothing = 15  # gaussian sigma factor
+constraint_multiplier = 100   # think of it like contrast for degree of constraint
 
+# print("Please review the documentation - https://github.com/SamRobertsArup/Heat-Mapper")
+# path = input("Please specify your data folder:")
+# smoothing = input("Please specify smoothness (try 15):")
+# constraint_multiplier = input("Please specify constraint multiplier (try 300):")
 
 shape = 1000, 1000  # outraster resolution
 pnt_constrain_buffer = 1
-grid_cells = 100
+cell_size_m = 250
 
-smoothing = 1  # gaussian sigma factor
-constraint_multiplier = 1   # think of it like contrast for degree of constraint
 
-def compileConstraints():
+def compileConstraints(constraint_paths):
     features_in_aoi = []
     for constraint_path in tqdm.tqdm(constraint_paths):
         constraint = gpd.read_file(constraint_path)
@@ -42,30 +46,35 @@ def compileConstraints():
     features = pd.concat(features_in_aoi, ignore_index=True)
     return features
 
-def generateGrid(area, cells):
-    xmin, ymin, xmax, ymax = area.total_bounds
-    x = np.linspace(xmin, xmax, num=cells)
-    square_grid_correction = int((ymax - ymin) / (int((xmax - xmin) / len(x))))
-    y = np.linspace(ymin, ymax, num=square_grid_correction)
-    print(f"X grid spacing: {str((xmax-xmin)/len(x))}")
-    print(f"Y grid spacing: {str((ymax-ymin)/len(y))}")
+def generateGrid(bbox, cell_m, crs):
+    """
+    bbox: area to grid
+    cell_m: side of a grid square in m / crs unit
+    crs: coordinate reference system (only tested with crs using m ie UTM, BNG...)
+    """
+    xmin, ymin, xmax, ymax = bbox
+    cellsX = int(np.ceil((xmax - xmin) / cell_m))
+    cellsY = int(np.ceil((ymax - ymin) / cell_m))
+    x = np.linspace(xmin, xmax, num=cellsX)
+    y = np.linspace(ymin, ymax, num=cellsY)
+    print(f"Grid will be {cellsX} (x) by {cellsY} (y) cells where each cell is {cell_m}m2")
 
-    polygons=[]
-    points=[]
+    polygons = []
+    cols = []
+    rows = []
     print("creating grid...")
     for i in tqdm.tqdm(range(len(x)-1)):
         for j in range(len(y)-1):
             cell = Polygon([(x[i], y[j]), (x[i + 1], y[j]), (x[i + 1], y[j + 1]), (x[i], y[j + 1])])
             polygons.append(cell)
-            points.append(cell.centroid)
+            cols.append(i)
+            rows.append(j)
+    polyGrid = gpd.GeoDataFrame({'geometry': polygons, 'col': cols, 'row':rows}, crs=crs).set_crs(crs)
 
-    polyGrid = gpd.GeoDataFrame({'geometry': polygons}, crs=area.crs).set_crs(area.crs)
-    polypoints = gpd.GeoDataFrame({'geometry': points}, crs=area.crs).set_crs(area.crs)
-    # polyGrid.to_file(os.path.join(path, "grid.shp"))
     return polyGrid
 
 def rasterise(heatmap, aoi):
-    transform = rasterio.transform.from_bounds(*aoi['geometry'].buffer(2000).total_bounds, *shape)
+    transform = rasterio.transform.from_bounds(*aoi['geometry'].buffer(5000).total_bounds, *shape)
     ras = rasterize(
         [(row[1]['geometry'], row[1]['weight']) for row in heatmap.iterrows()],
         out_shape=shape,
@@ -93,7 +102,7 @@ if __name__ == "__main__":
     constraint_paths = glob.glob(os.path.join(path, r"Constraints\*\*.shp"))
 
     print("Formatting constraints...")
-    constraints = compileConstraints()
+    constraints = compileConstraints(constraint_paths)
     constraints["weight"] = constraints["weight"].apply(lambda w: int(w))
     constraints.to_file(os.path.join(path, "simplified_constraints_data.shp"))
 
@@ -105,21 +114,21 @@ if __name__ == "__main__":
 
     # simply rasterising the contraints doesn't account for overlapping constraints, so we create the grid
     print("Creating gridded heatmap...")
-    grid = generateGrid(aoi, grid_cells)
-    grid_heat = grid
+    grid = generateGrid(aoi.total_bounds, cell_size_m, aoi.crs)
+
     for weight in tqdm.tqdm([int(i) for i in list(constraints['weight'].unique())]):
         temp = constraints.where(constraints['weight'] == weight).copy()
         temp['weight_'+str(weight)] = temp['weight']
         temp.drop(['weight'], axis=1, inplace=True)
-        if 'index_right' in list(grid_heat.columns):
-            grid_heat.drop(['index_right'], axis=1, inplace=True)
-        grid_heat = gpd.sjoin(grid_heat, temp, how='left', op='intersects')
-    sum_cols = [col for col in list(grid_heat.columns) if col.startswith('weight')]
-    grid_heat['weight'] = grid_heat[sum_cols].sum(axis=1)
-    grid_heat.drop(sum_cols, axis=1, inplace=True)
-    grid_heat.to_file(os.path.join(path, "grid_heatmap.shp"))
+        if 'index_right' in list(grid.columns):
+            grid.drop(['index_right'], axis=1, inplace=True)
+        grid = gpd.sjoin(grid, temp, how='left', op='intersects')
+    sum_cols = [col for col in list(grid.columns) if col.startswith('weight')]
+    grid['weight'] = grid[sum_cols].sum(axis=1)
+    grid.drop(sum_cols, axis=1, inplace=True)
+    grid.to_file(os.path.join(path, "grid_heatmap.shp"))
 
-    rasterise(grid_heat, aoi)
+    rasterise(grid, aoi)
 
 
 
