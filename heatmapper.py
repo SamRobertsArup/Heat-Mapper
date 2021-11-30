@@ -6,6 +6,7 @@ import os
 import numpy as np
 from shapely.geometry import Polygon
 import tqdm
+import multiprocessing
 
 import rasterio
 from rasterio.features import rasterize
@@ -19,8 +20,8 @@ from scipy.ndimage import gaussian_filter
 #       only 1 place all under 1
 
 path = r"C:\dev\Requests and Tasks\EAST LINDSEY heatmap\data"
-smoothing = 15  # gaussian sigma factor
-constraint_multiplier = 300   # think of it like contrast for degree of constraint
+smoothing = 10  # gaussian sigma factor
+constraint_multiplier = 100   # think of it like contrast for degree of constraint
 
 # print("Please review the documentation - https://github.com/SamRobertsArup/Heat-Mapper")
 # path = input("Please specify your data folder:")
@@ -96,15 +97,38 @@ def rasterise(heatmap, aoi):
     ) as dst:
         dst.write(ras, indexes=1)
 
+
+def sumConstraints(grid, constraints):
+    xmin, ymin, xmax, ymax = grid.total_bounds
+    constraints = constraints.cx[xmin:xmax, ymin:ymax]
+    for i, contraint in tqdm.tqdm(constraints.iterrows()):
+        contraint = contraint.copy()
+        contraint['weight_' + str(i)] = contraint['weight']
+        contraint.drop(['weight'], inplace=True)
+        if 'index_right' in list(grid.columns):
+            grid.drop(['index_right'], axis=1, inplace=True)
+        temp = gpd.GeoDataFrame(data=[list(contraint)], columns=list(contraint.index), geometry='geometry').set_crs(constraints.crs)
+        grid = gpd.sjoin(grid, temp, how='left', op='intersects')
+    return grid
+
+def split_dataframe(df, num_chunks=2):
+    chunk_size = np.ceil(df.shape[0]/num_chunks)
+    chunks = list()
+    for i in range(num_chunks):
+        start = int(i*chunk_size)
+        end = int(min((i+1)*chunk_size, df.shape[0]))
+        chunks.append(df[start:end].copy())
+    return chunks
+
 if __name__ == "__main__":
     print("running...")
     aoi = gpd.read_file(glob.glob(os.path.join(path, r"AOI\*.shp"))[0])
     constraint_paths = glob.glob(os.path.join(path, r"Constraints\*\*.shp"))
 
-    print("Formatting constraints...")
-    constraints = compileConstraints(constraint_paths)
-    constraints["weight"] = constraints["weight"].apply(lambda w: int(w))
-    constraints.to_file(os.path.join(path, "simplified_constraints_data.shp"))
+    # print("Formatting constraints...")
+    # constraints = compileConstraints(constraint_paths)
+    # constraints["weight"] = constraints["weight"].apply(lambda w: int(w))
+    # constraints.to_file(os.path.join(path, "simplified_constraints_data.shp"))
 
     print("Creating heatmap...")
     constraints = gpd.read_file(os.path.join(path, "simplified_constraints_data.shp"))
@@ -116,13 +140,12 @@ if __name__ == "__main__":
     print("Creating gridded heatmap...")
     grid = generateGrid(aoi.total_bounds, cell_size_m, aoi.crs)
 
-    for weight in tqdm.tqdm([int(i) for i in list(constraints['weight'].unique())]):
-        temp = constraints.where(constraints['weight'] == weight).copy()
-        temp['weight_'+str(weight)] = temp['weight']
-        temp.drop(['weight'], axis=1, inplace=True)
-        if 'index_right' in list(grid.columns):
-            grid.drop(['index_right'], axis=1, inplace=True)
-        grid = gpd.sjoin(grid, temp, how='left', op='intersects')
+    grids = split_dataframe(grid, num_chunks=multiprocessing.cpu_count() - 1)
+    args = [(df, constraints) for df in grids]
+    with multiprocessing.Pool() as pool:
+        grids = pool.starmap(sumConstraints, args)
+        grid = pd.concat(grids, ignore_index=True)
+
     sum_cols = [col for col in list(grid.columns) if col.startswith('weight')]
     grid['weight'] = grid[sum_cols].sum(axis=1)
     grid.drop(sum_cols, axis=1, inplace=True)
@@ -133,3 +156,14 @@ if __name__ == "__main__":
 
 
 
+ # for weight in tqdm.tqdm([int(i) for i in list(constraints['weight'].unique())]):
+ #        temp = constraints.where(constraints['weight'] == weight).copy()
+ #        temp['weight_'+str(weight)] = temp['weight']
+ #        temp.drop(['weight'], axis=1, inplace=True)
+ #        if 'index_right' in list(grid.columns):
+ #            grid.drop(['index_right'], axis=1, inplace=True)
+ #        grid = gpd.sjoin(grid, temp, how='left', op='intersects')
+ #    sum_cols = [col for col in list(grid.columns) if col.startswith('weight')]
+ #    grid['weight'] = grid[sum_cols].sum(axis=1)
+ #    grid.drop(sum_cols, axis=1, inplace=True)
+ #    grid.to_file(os.path.join(path, "grid_heatmap.shp"))
